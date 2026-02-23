@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  securevigil:
+    build: .
+    container_name: securevigil
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_PATH=/app/data/vulnerabilities.db
+      - ALERT_EMAIL_SENDER=${ALERT_EMAIL_SENDER}
+      - ALERT_EMAIL_RECEIVER=${ALERT_EMAIL_RECEIVER}
+      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - securevigil-network
+
+networks:
+  securevigil-network:
+    driver: bridge

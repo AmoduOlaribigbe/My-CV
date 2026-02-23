@@ -1,0 +1,148 @@
+# SecureVigil Azure DevOps CI/CD Pipeline
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - '*.py'
+    - 'requirements.txt'
+    - 'Dockerfile'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  dockerRegistryServiceConnection: 'yourAzureContainerRegistry'
+  imageRepository: 'securevigil'
+  containerRegistry: 'yourregistry.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  tag: '$(Build.BuildId)'
+  pythonVersion: '3.11'
+
+stages:
+- stage: Test
+  displayName: 'Test Stage'
+  jobs:
+  - job: RunTests
+    displayName: 'Run Unit Tests'
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python $(pythonVersion)'
+      inputs:
+        versionSpec: '$(pythonVersion)'
+    
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+      displayName: 'Install dependencies'
+    
+    - script: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      displayName: 'Run linting'
+    
+    - script: |
+        pytest tests/ --junitxml=junit/test-results.xml --cov=. --cov-report=xml --cov-report=html
+      displayName: 'Run pytest'
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish test results'
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFiles: '**/test-*.xml'
+        testRunTitle: 'Python $(pythonVersion)'
+    
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish code coverage'
+      inputs:
+        codeCoverageTool: Cobertura
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+
+- stage: SecurityScan
+  displayName: 'Security Scanning'
+  dependsOn: Test
+  jobs:
+  - job: SecurityScanning
+    displayName: 'Run Security Scans'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+    
+    - script: |
+        pip install safety bandit
+        safety check --json
+        bandit -r . -f json -o bandit-report.json
+      displayName: 'Run security scans'
+      continueOnError: true
+
+- stage: Build
+  displayName: 'Build Stage'
+  dependsOn: Test
+  jobs:
+  - job: BuildAndPush
+    displayName: 'Build and Push Docker Image'
+    steps:
+    - task: Docker@2
+      displayName: 'Build Docker image'
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: $(imageRepository)
+        command: 'build'
+        Dockerfile: $(dockerfilePath)
+        tags: |
+          $(tag)
+          latest
+    
+    - task: Docker@2
+      displayName: 'Push Docker image'
+      inputs:
+        containerRegistry: $(dockerRegistryServiceConnection)
+        repository: $(imageRepository)
+        command: 'push'
+        tags: |
+          $(tag)
+          latest
+
+- stage: Deploy
+  displayName: 'Deploy Stage'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToAzure
+    displayName: 'Deploy to Azure App Service'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'yourAzureSubscription'
+              appName: 'securevigil-app'
+              containers: $(containerRegistry)/$(imageRepository):$(tag)
+              
+          - task: AzureAppServiceSettings@1
+            displayName: 'Configure App Settings'
+            inputs:
+              azureSubscription: 'yourAzureSubscription'
+              appName: 'securevigil-app'
+              resourceGroupName: 'securevigil-rg'
+              appSettings: |
+                [
+                  {
+                    "name": "FLASK_ENV",
+                    "value": "production",
+                    "slotSetting": false
+                  },
+                  {
+                    "name": "WEBSITES_PORT",
+                    "value": "5000",
+                    "slotSetting": false
+                  }
+                ]
