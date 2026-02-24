@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: '/My-CV/',   // 👈 ADD THIS LINE
+  base: '/My-CV/', // Ensure this matches your repo name
 
   plugins: [
     react(),
