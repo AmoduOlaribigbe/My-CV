@@ -171,6 +171,7 @@ export function Skills() {
       </section>
 
       {/* Education */}
+      {/*}
       <section className="bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-lg p-6">
         <h2 className="text-2xl font-bold text-white mb-4">Education</h2>
         <div className="space-y-4">
@@ -188,6 +189,7 @@ export function Skills() {
           </div>
         </div>
       </section>
+      */}
 
       {/* References */}
       <section className="text-center bg-blue-500/10 border border-blue-500/30 rounded-lg p-6">
